@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Processed Images{% endblock %}
+
+{% block content %}
+<h2>Processed Images</h2>
+<div>
+    {% for item in processed %}
+        <div>
+            <p><strong>Filename:</strong> {{ item.filename }}</p>
+            <p><strong>Status:</strong> {{ item.status }}</p>
+            <p><strong>Metadata:</strong> {{ item.metadata }}</p>
+        </div>
+    {% else %}
+        <p>No images found. Please upload an image and wait for processing.</p>
+    {% endfor %}
+</div>
+{% endblock %}

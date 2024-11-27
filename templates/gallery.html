@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Uploaded Images{% endblock %}
+
+{% block content %}
+<h2>Uploaded Images</h2>
+<div>
+    {% if success_message %}
+        <p>{{ success_message }}</p>
+    {% endif %}
+</div>
+
+<div>
+    {% for image in images %}
+        <div>
+            <img src="{{ image }}" alt="Uploaded Image" width="200" />
+            <p>{{ image }}</p>
+        </div>
+    {% else %}
+        <p>No images uploaded yet. Please upload an image.</p>
+    {% endfor %}
+</div>
+{% endblock %}
