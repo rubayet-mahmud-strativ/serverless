@@ -53,7 +53,6 @@ def lambda_handler(event, context):
         # Save image metadata to DynamoDB
         try:
             table.put_item(Item={
-                'id': 1,
                 'image_id': object_key,
                 'metadata': image_metadata
             })
@@ -73,7 +72,7 @@ def lambda_handler(event, context):
         png_image.seek(0)  # Reset pointer to start of file
 
         # Upload the converted image to the destination S3 bucket
-        destination_key = f"grayscale/{object_key.split('/')[-1].split('.')[0]}.png"
+        destination_key = f"grayscaled_{object_key.split('/')[-1].split('.')[0]}.png"
         try:
             s3_client.put_object(Body=png_image, Bucket=destination_bucket, Key=destination_key)
         except Exception as e:

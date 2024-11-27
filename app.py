@@ -5,9 +5,9 @@ from fastapi.templating import Jinja2Templates
 import boto3
 import uuid
 import os
-from datetime import datetime
-import pytz
 from dotenv import load_dotenv
+
+from botocore.exceptions import NoCredentialsError
 
 
 load_dotenv()
@@ -16,10 +16,18 @@ load_dotenv()
 S3_UPLOAD_BUCKET = os.getenv("S3_UPLOAD_BUCKET")
 S3_OUTPUT_BUCKET = os.getenv("S3_OUTPUT_BUCKET")
 DYNAMODB_TABLE = os.getenv("DYNAMODB_TABLE")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+
 AWS_REGION = os.getenv("AWS_REGION")
 
 # Set up S3 client
-s3_client = boto3.client("s3", region_name=AWS_REGION)
+s3_client = boto3.client(
+    "s3",
+    aws_access_key_id=AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+    region_name=AWS_REGION
+)
 
 # Set up DynamoDB client
 dynamodb = boto3.resource("dynamodb", region_name=AWS_REGION)
@@ -34,6 +42,31 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 
+def generate_presigned_url(bucket_name, object_key, expiration=3600):
+    """
+    Generate a pre-signed URL for an S3 object.
+
+    :param bucket_name: Name of the S3 bucket.
+    :param object_key: Key of the object in the S3 bucket.
+    :param expiration: Time in seconds for the pre-signed URL to remain valid.
+    :return: Pre-signed URL as a string. If error, returns None.
+    """
+    try:
+        # Generate the pre-signed URL
+        presigned_url = s3_client.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket_name, "Key": object_key},
+            ExpiresIn=expiration
+        )
+        return presigned_url
+    except NoCredentialsError:
+        print("AWS credentials not found.")
+        return None
+    except Exception as e:
+        print(f"Error generating pre-signed URL: {e}")
+        return None
+
+
 @app.get("/", response_class=HTMLResponse)
 def read_root(request: Request):
     return templates.TemplateResponse("upload.html", {"request": request})
@@ -45,23 +78,20 @@ async def upload_file(file: UploadFile):
         return {"error": "Invalid file type. Only JPEG and PNG are allowed."}
     try:
         # Upload image to S3
-        tz = pytz.timezone('UTC')  # You can replace 'UTC' with your desired timezone
-        timestamp = datetime.now(tz).strftime("%Y%m%dT%H%M%S%z")
-        file_key = f"{uuid.uuid4()}/{timestamp}/{file.filename}"
+        file_key = f"{uuid.uuid4()}-{file.filename}"
         s3_client.upload_fileobj(file.file, S3_UPLOAD_BUCKET, file_key)
         success_message = "Image uploaded successfully!"
 
         # Save metadata to DynamoDB
         dynamo_table.put_item(
             Item={
-                "id": file_key,
+                "image_id": file_key,
                 "filename": file.filename,
                 "status": "uploaded",
             }
         )
-        # response = {"message": "Image uploaded successfully!", "file_key": file_key}
-        response = RedirectResponse(url="/gallery/", status_code=303)
-        return RedirectResponse(url=f"/gallery/?message={success_message}", status_code=303)
+
+        response = RedirectResponse(url=f"/gallery/?message={success_message}", status_code=303)
     except Exception as e:
         print(f"------- Unable to upload images")
         print(f"------- ERROR: {e}")
@@ -77,8 +107,10 @@ def gallery(request: Request):
         # List uploaded images from S3
         response = s3_client.list_objects_v2(Bucket=S3_UPLOAD_BUCKET)
         if "Contents" in response:
-            images = [obj["Key"] for obj in response["Contents"]]
-            images = [f"https://{S3_UPLOAD_BUCKET}.s3.amazonaws.com/{obj['Key']}" for obj in response["Contents"]]
+            images = [
+                generate_presigned_url(S3_UPLOAD_BUCKET, obj["Key"])
+                for obj in response["Contents"]
+            ]
     except Exception as e:
         print(f"------- Unable to retrieve gallery")
         print(f"------- ERROR: {e}")
@@ -90,11 +122,13 @@ def gallery(request: Request):
 def processed_images(request: Request):
     processed = []
     try:
-        # Fetch processed images from DynamoDB
-        response = dynamo_table.scan()
-        processed = [
-            item for item in response.get("Items", []) if item.get("status") == "processed"
-        ]
+        # List uploaded images from S3
+        response = s3_client.list_objects_v2(Bucket=S3_OUTPUT_BUCKET)
+        if "Contents" in response:
+            processed = [
+                generate_presigned_url(S3_OUTPUT_BUCKET, obj["Key"])
+                for obj in response["Contents"]
+            ]
     except Exception as e:
         print(f"------- Unable to retrieve processed images")
         print(f"------- ERROR: {e}")

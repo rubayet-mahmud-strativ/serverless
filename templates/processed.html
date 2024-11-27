@@ -5,14 +5,13 @@
 {% block content %}
 <h2>Processed Images</h2>
 <div>
-    {% for item in processed %}
+    {% for image in processed %}
         <div>
-            <p><strong>Filename:</strong> {{ item.filename }}</p>
-            <p><strong>Status:</strong> {{ item.status }}</p>
-            <p><strong>Metadata:</strong> {{ item.metadata }}</p>
+            <img src="{{ image }}" alt="Processed Image" width="200" />
+            <p>{{ image }}</p>
         </div>
     {% else %}
-        <p>No images found. Please upload an image and wait for processing.</p>
+        <p>No images uploaded yet. Please upload an image.</p>
     {% endfor %}
 </div>
 {% endblock %}
